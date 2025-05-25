@@ -33,7 +33,7 @@ except json.JSONDecodeError:
 
 # Inicjalizacja modeli Gemini
 # Model dla obrazów
-model_vision = genai.GenerativeModel('gemini-pro-vision')
+model_vision = genai.GenerativeModel('gemini-1.5-flash')
 # Model dla tekstu (FAQ)
 model_text = genai.GenerativeModel('gemini-pro')
 
