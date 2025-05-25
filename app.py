@@ -259,7 +259,7 @@ if uploaded_image_file is not None:
         st.session_state['uploaded_image_file_id'] = uploaded_image_file.file_id
         st.session_state['uploaded_image_bytes'] = uploaded_image_file.getvalue()
         
-        st.image(uploaded_image_file, caption='Przesłane zdjęcie', use_column_width=True)
+        st.image(uploaded_image_file, caption='Przesłane zdjęcie', use_container_width=True)
         image_bytes = uploaded_image_file.getvalue()
         
         with st.spinner("Analizuję zdjęcie za pomocą Gemini AI..."):
