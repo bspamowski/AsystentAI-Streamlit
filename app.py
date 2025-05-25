@@ -27,8 +27,6 @@ except json.JSONDecodeError:
     FAQ_DATA = []
 
 # Inicjalizacja modelu Gemini 1.5 Flash (dla obrazów i tekstu)
-# Ten model jest multimodalny i może przyjmować zarówno obrazy, jak i tekst.
-# Jest to optymalne rozwiązanie dla tego projektu.
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- Funkcje asystenta ---
@@ -43,7 +41,7 @@ def describe_and_tag_image(image_bytes):
     }
     
     prompt_parts = [
-        "Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, osobach, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 5 do 10 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
+"Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, osobach, ilości i kolorze obiektów, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 10 do 30 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
         image_part
     ]
     
@@ -75,11 +73,29 @@ def describe_and_tag_image(image_bytes):
         st.error(f"Wystąpił błąd podczas opisywania/tagowania zdjęcia: {e}. Sprawdź, czy Twój klucz API jest prawidłowy i czy nie przekroczyłeś limitów usage.")
         return "Nie udało się opisać zdjęcia. Spróbuj ponownie.", "Brak tagów."
 
-def answer_question(user_question, image_description=None, image_tags=None):
+def answer_question_callback():
     """
-    Odpowiada na pytanie użytkownika, uwzględniając kontekst FAQ i/lub zdjęcie.
+    Funkcja wywoływana, gdy użytkownik naciśnie Enter w polu pytania.
+    Pobiera pytanie z pola i wywołuje model AI.
     """
-    # Przygotuj kontekst FAQ
+    user_question = st.session_state.general_question_input # Pobierz wartość pola z klucza
+    
+    if user_question:
+        with st.spinner("Szukam odpowiedzi..."):
+            answer = generate_answer(
+                user_question,
+                image_description=st.session_state['image_description'],
+                image_tags=st.session_state['image_tags']
+            )
+            st.session_state['last_answer'] = answer # Zapisz odpowiedź w stanie sesji
+            st.session_state.general_question_input = "" # Wyczyść pole po wysłaniu pytania
+    else:
+        st.session_state['last_answer'] = "Wpisz pytanie, aby otrzymać odpowiedź."
+
+def generate_answer(user_question, image_description=None, image_tags=None):
+    """
+    Generuje odpowiedź na pytanie użytkownika, uwzględniając kontekst FAQ i/lub zdjęcie.
+    """
     faq_context = ""
     if FAQ_DATA:
         faq_context += "Kontekst FAQ:\n"
@@ -88,14 +104,12 @@ def answer_question(user_question, image_description=None, image_tags=None):
     else:
         faq_context = "Brak dostępnego kontekstu FAQ.\n"
 
-    # Przygotuj kontekst zdjęcia, jeśli jest dostępny
     image_context = ""
     if image_description and image_tags:
         image_context = f"\nKontekst zdjęcia:\nOpis: {image_description}\nTagi: {image_tags}\n"
     elif image_description:
         image_context = f"\nKontekst zdjęcia:\nOpis: {image_description}\n"
     
-    # Budowanie promptu
     prompt = f"""
     Jesteś asystentem, który odpowiada na pytania użytkownika.
     Twoja odpowiedź powinna być oparta na dostarczonym kontekście FAQ oraz/lub opisie przesłanego zdjęcia.
@@ -111,15 +125,12 @@ def answer_question(user_question, image_description=None, image_tags=None):
     """
     
     try:
-        # Wysyłamy tylko tekstowy prompt, ponieważ obraz został już przetworzony na opis.
-        # Jeśli chcielibyśmy, żeby LLM "widział" obraz przy każdym pytaniu,
-        # musielibyśmy przekazywać go w każdym zapytaniu, co zwiększyłoby koszty/opóźnienia.
-        # Dla tego scenariusza, opis tekstowy jest wystarczającym kontekstem.
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
-        st.error(f"Wystąpił błąd podczas odpowiadania na pytanie: {e}. Spróbuj zadać pytanie ponownie.")
+        st.error(f"Wystąpił błąd podczas generowania odpowiedzi: {e}. Spróbuj zadać pytanie ponownie.")
         return "Nie udało się udzielić odpowiedzi na pytanie z powodu błędu."
+
 
 # --- Interfejs Streamlit ---
 
@@ -127,13 +138,15 @@ st.set_page_config(page_title="Asystent AI: Opis i FAQ", layout="centered")
 st.title("🤖 Asystent AI: Opis Zdjęć i FAQ (wersja multimodalna)")
 st.markdown("Witaj! Jestem asystentem, który potrafi opisać i otagować przesłane zdjęcia, a także odpowiedzieć na pytania dotyczące naszego FAQ lub przesłanego obrazu.")
 
-# Zmienne stanu sesji do przechowywania opisu i tagów zdjęcia
+# Zmienne stanu sesji do przechowywania opisu i tagów zdjęcia oraz ostatniej odpowiedzi
 if 'image_description' not in st.session_state:
     st.session_state['image_description'] = None
 if 'image_tags' not in st.session_state:
     st.session_state['image_tags'] = None
 if 'uploaded_image_bytes' not in st.session_state:
     st.session_state['uploaded_image_bytes'] = None
+if 'last_answer' not in st.session_state:
+    st.session_state['last_answer'] = "Zadaj pytanie, aby otrzymać odpowiedź."
 
 
 # Sekcja opisywania zdjęć
@@ -142,7 +155,8 @@ uploaded_file = st.file_uploader("Wybierz zdjęcie (JPG, PNG) do analizy:", type
 
 if uploaded_file is not None:
     # Tylko jeśli przesłano nowy plik, przetwarzaj go
-    if st.session_state['uploaded_image_bytes'] != uploaded_file.getvalue():
+    if st.session_state.get('uploaded_file_id') != uploaded_file.file_id: # Sprawdź unikalne ID pliku
+        st.session_state['uploaded_file_id'] = uploaded_file.file_id # Zapisz ID nowego pliku
         st.session_state['uploaded_image_bytes'] = uploaded_file.getvalue()
         
         st.image(uploaded_file, caption='Przesłane zdjęcie', use_column_width=True)
@@ -156,7 +170,7 @@ if uploaded_file is not None:
             st.write(st.session_state['image_description'])
             st.subheader("Słowa kluczowe (tagi):")
             st.code(st.session_state['image_tags'])
-    else: # Jeśli plik już był przesłany, po prostu go wyświetl
+    else: # Jeśli plik już był przesłany w tej sesji, po prostu go wyświetl i jego analizę
         st.image(uploaded_file, caption='Przesłane zdjęcie', use_column_width=True)
         st.subheader("Opis zdjęcia:")
         st.write(st.session_state['image_description'])
@@ -165,18 +179,15 @@ if uploaded_file is not None:
 
 # Sekcja zadawania pytań
 st.header("❓ Zadaj Pytanie")
-st.markdown("Zadaj pytanie dotyczące **FAQ** lub **przesłanego zdjęcia** (jeśli zostało przeanalizowane).")
-user_question = st.text_input("Wpisz swoje pytanie tutaj:", key="general_question_input")
+st.markdown("Zadaj pytanie dotyczące **FAQ** lub **przesłanego zdjęcia** (jeśli zostało przeanalizowane). Naciśnij **Enter**, aby wysłać.")
 
-if user_question:
-    if st.button("Zadaj pytanie"):
-        with st.spinner("Szukam odpowiedzi..."):
-            answer = answer_question(
-                user_question,
-                image_description=st.session_state['image_description'],
-                image_tags=st.session_state['image_tags']
-            )
-            st.subheader("Odpowiedź:")
-            st.info(answer)
+# Pole tekstowe pytania z callbackiem na Enter
+st.text_input(
+    "Wpisz swoje pytanie tutaj:", 
+    key="general_question_input", 
+    on_change=answer_question_callback # Ta funkcja zostanie wywołana po naciśnięciu Enter
+)
 
-st.markdown("---")
+# Wyświetlanie ostatniej odpowiedzi
+st.subheader("Odpowiedź:")
+st.info(st.session_state['last_answer'])
