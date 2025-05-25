@@ -276,7 +276,7 @@ if uploaded_image_file is not None:
             st.session_state['context_updated_flag'] = True 
             st.rerun() # Odśwież, aby zainicjować chat z nowym kontekstem
     else: # Jeśli plik już był przesłany w tej sesji
-        st.image(uploaded_image_file, caption='Przesłane zdjęcie', use_column_width=True)
+        st.image(uploaded_image_file, caption='Przesłane zdjęcie', use_container_width=True)
         st.subheader("Opis zdjęcia:")
         st.write(st.session_state['image_description'])
         st.subheader("Słowa kluczowe (tagi):")
