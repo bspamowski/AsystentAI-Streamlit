@@ -66,7 +66,7 @@ def describe_and_tag_image(image_bytes):
     }
     
     prompt_parts = [
-        "Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, ilościach, osobach, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 10 do 30 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
+        "Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na opisach wszystkich obiektów, ilościach, opisach osób, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 10 do 30 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
         image_part
     ]
     
