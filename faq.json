@@ -1,0 +1,18 @@
+[
+  {
+    "pytanie": "Jakie są godziny otwarcia sklepu?",
+    "odpowiedz": "Nasz sklep jest otwarty od poniedziałku do piątku w godzinach 9:00-17:00."
+  },
+  {
+    "pytanie": "Czy oferujecie darmową dostawę?",
+    "odpowiedz": "Tak, oferujemy darmową dostawę dla zamówień powyżej 150 PLN."
+  },
+  {
+    "pytanie": "Jaka jest polityka zwrotów?",
+    "odpowiedz": "Na zwrot produktów masz 14 dni od daty zakupu. Szczegóły znajdziesz w sekcji 'Polityka Zwrotów' na naszej stronie."
+  },
+  {
+    "pytanie": "Czy mogę zapłacić kartą?",
+    "odpowiedz": "Akceptujemy płatności kartami Visa, MasterCard i American Express."
+  }
+]
