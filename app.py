@@ -27,21 +27,22 @@ except json.JSONDecodeError:
     FAQ_DATA = []
 
 # Inicjalizacja modelu Gemini 1.5 Flash (dla obrazów i tekstu)
+# Użyjemy tego samego modelu do wszystkich interakcji
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- Funkcje asystenta ---
+# --- Funkcje Asystenta ---
 
 def describe_and_tag_image(image_bytes):
     """
     Opisuje zawartość zdjęcia i generuje tagi za pomocą Gemini 1.5 Flash.
     """
     image_part = {
-        'mime_type': 'image/jpeg', # Dostosuj typ MIME jeśli potrzebujesz (np. 'image/png')
+        'mime_type': 'image/jpeg', # Dostosuj typ MIME jeśli potrzebujesz
         'data': image_bytes
     }
     
     prompt_parts = [
-"Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, osobach, ilości i kolorze obiektów, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 10 do 30 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
+        "Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, osobach, ilości i kolorze obiektów, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 10 do 30 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
         image_part
     ]
     
@@ -70,32 +71,11 @@ def describe_and_tag_image(image_bytes):
 
         return description, tags
     except Exception as e:
-        st.error(f"Wystąpił błąd podczas opisywania/tagowania zdjęcia: {e}. Sprawdź, czy Twój klucz API jest prawidłowy i czy nie przekroczyłeś limitów usage.")
-        return "Nie udało się opisać zdjęcia. Spróbuj ponownie.", "Brak tagów."
+        st.error(f"Wystąpił błąd podczas opisywania/tagowania zdjęcia: {e}. Spróbuj ponownie lub sprawdź status API.")
+        return "Nie udało się opisać zdjęcia.", "Brak tagów."
 
-def answer_question_callback():
-    """
-    Funkcja wywoływana, gdy użytkownik naciśnie Enter w polu pytania.
-    Pobiera pytanie z pola i wywołuje model AI.
-    """
-    user_question = st.session_state.general_question_input # Pobierz wartość pola z klucza
-    
-    if user_question:
-        with st.spinner("Szukam odpowiedzi..."):
-            answer = generate_answer(
-                user_question,
-                image_description=st.session_state['image_description'],
-                image_tags=st.session_state['image_tags']
-            )
-            st.session_state['last_answer'] = answer # Zapisz odpowiedź w stanie sesji
-            st.session_state.general_question_input = "" # Wyczyść pole po wysłaniu pytania
-    else:
-        st.session_state['last_answer'] = "Wpisz pytanie, aby otrzymać odpowiedź."
-
-def generate_answer(user_question, image_description=None, image_tags=None):
-    """
-    Generuje odpowiedź na pytanie użytkownika, uwzględniając kontekst FAQ i/lub zdjęcie.
-    """
+def get_faq_context():
+    """Generuje sformatowany kontekst FAQ."""
     faq_context = ""
     if FAQ_DATA:
         faq_context += "Kontekst FAQ:\n"
@@ -103,60 +83,118 @@ def generate_answer(user_question, image_description=None, image_tags=None):
             faq_context += f"Pytanie: {entry['pytanie']}\nOdpowiedź: {entry['odpowiedz']}\n---\n"
     else:
         faq_context = "Brak dostępnego kontekstu FAQ.\n"
+    return faq_context
 
-    image_context = ""
-    if image_description and image_tags:
-        image_context = f"\nKontekst zdjęcia:\nOpis: {image_description}\nTagi: {image_tags}\n"
-    elif image_description:
-        image_context = f"\nKontekst zdjęcia:\nOpis: {image_description}\n"
-    
-    prompt = f"""
-    Jesteś asystentem, który odpowiada na pytania użytkownika.
-    Twoja odpowiedź powinna być oparta na dostarczonym kontekście FAQ oraz/lub opisie przesłanego zdjęcia.
-    Jeśli pytanie dotyczy zdjęcia, odwołaj się do jego opisu.
-    Jeśli pytanie dotyczy FAQ, odwołaj się do kontekstu FAQ.
-    Jeśli pytanie nie pasuje do żadnego z kontekstów, odpowiedz, że nie możesz pomóc z tym pytaniem i zaproponuj kontakt z obsługą klienta.
+def get_image_context(description, tags):
+    """Generuje sformatowany kontekst zdjęcia."""
+    if description and tags:
+        return f"\nKontekst zdjęcia:\nOpis: {description}\nTagi: {tags}\n"
+    elif description:
+        return f"\nKontekst zdjęcia:\nOpis: {description}\n"
+    return ""
 
-    {faq_context}
-    {image_context}
 
-    Pytanie użytkownika: {user_question}
-    Odpowiedź:
+# --- Główna logika chatbota ---
+
+def chat_with_bot():
     """
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        st.error(f"Wystąpił błąd podczas generowania odpowiedzi: {e}. Spróbuj zadać pytanie ponownie.")
-        return "Nie udało się udzielić odpowiedzi na pytanie z powodu błędu."
+    Funkcja wywoływana po przesłaniu pytania lub wybraniu zdjęcia.
+    Zarządza historią rozmowy i generuje odpowiedzi.
+    """
+    user_question = st.session_state.chat_input # Pobierz pytanie z pola tekstowego
+
+    if user_question:
+        # Dodaj pytanie użytkownika do historii rozmowy
+        st.session_state.messages.append({"role": "user", "content": user_question})
+        
+        # Przygotuj kontekst dla modelu
+        combined_context = get_faq_context() + get_image_context(
+            st.session_state['image_description'],
+            st.session_state['image_tags']
+        )
+        
+        # Budowanie pełnego promptu dla modelu
+        # Model Gemini przyjmuje listę obiektów (tekst, obraz, itp.) jako prompt.
+        # W trybie konwersacji, będziemy używać obiektu ChatSession.
+        
+        # Inicjalizacja chat sesji (jeśli jeszcze jej nie ma)
+        if 'chat_session' not in st.session_state:
+            # Pierwsza wiadomość dla modelu - kontekst systemowy
+            st.session_state.chat_session = model.start_chat(history=[
+                {"role": "user", "parts": [
+                    "Jesteś pomocnym asystentem AI. Odpowiadasz na pytania użytkownika, korzystając z kontekstu FAQ oraz/lub opisu i tagów przesłanego zdjęcia. Utrzymuj kontekst rozmowy. Jeśli pytanie nie pasuje do żadnego kontekstu, grzecznie poinformuj, że nie możesz pomóc i zaproponuj kontakt z obsługą klienta.",
+                    combined_context
+                ]},
+                {"role": "model", "parts": ["Rozumiem. Jak mogę pomóc?"]}
+            ])
+        else:
+            # Aktualizuj kontekst w historii czatu, jeśli zdjęcie zostało zmienione
+            # lub jeśli dodajemy go po raz pierwszy do istniejącej sesji.
+            # To jest uproszczenie; w bardziej złożonym czacie wymagałoby lepszego zarządzania kontekstem systemowym.
+            if st.session_state.get('context_updated_flag', False) and 'chat_session' in st.session_state:
+                # Jeśli kontekst się zmienił, możemy zresetować sesję lub sprytnie dodać kontekst.
+                # Dla prostoty, w tej MVP wersji, jeśli kontekst obrazu się zmienia,
+                # dodamy go jako nową "wiadomość" od systemu.
+                # W praktyce, dla dłuższych rozmów, lepsze byłoby dynamiczne wstrzykiwanie do promptu systemowego
+                # lub re-inicjalizacja sesji z nowym kontekstem systemowym.
+                st.session_state.chat_session = model.start_chat(history=[
+                    {"role": "user", "parts": [
+                        "Jesteś pomocnym asystentem AI. Odpowiadasz na pytania użytkownika, korzystając z kontekstu FAQ oraz/lub opisu i tagów przesłanego zdjęcia. Utrzymuj kontekst rozmowy. Jeśli pytanie nie pasuje do żadnego kontekstu, grzecznie poinformuj, że nie możesz pomóc i zaproponuj kontakt z obsługi klienta.",
+                        combined_context
+                    ]},
+                    {"role": "model", "parts": ["Rozumiem. Jak mogę pomóc?"]}
+                ])
+                st.session_state['context_updated_flag'] = False # Zresetuj flagę
+
+        try:
+            # Wysyłanie wiadomości do modelu w ramach sesji czatu
+            with st.spinner("Myślę..."):
+                response = st.session_state.chat_session.send_message(user_question)
+                bot_response = response.text.strip()
+            
+            # Dodaj odpowiedź bota do historii rozmowy
+            st.session_state.messages.append({"role": "assistant", "content": bot_response})
+            
+        except Exception as e:
+            st.error(f"Wystąpił błąd podczas generowania odpowiedzi: {e}. Spróbuj zadać pytanie ponownie.")
+            st.session_state.messages.append({"role": "assistant", "content": "Przepraszam, wystąpił problem z wygenerowaniem odpowiedzi. Spróbuj ponownie."})
+        
+        # Wyczyść pole wprowadzania po wysłaniu
+        st.session_state.chat_input = ""
+    else:
+        st.session_state.messages.append({"role": "assistant", "content": "Wpisz coś, aby rozpocząć rozmowę."})
 
 
 # --- Interfejs Streamlit ---
 
-st.set_page_config(page_title="Asystent AI: Opis i FAQ", layout="centered")
-st.title("🤖 Asystent AI: Opis Zdjęć i FAQ (wersja multimodalna)")
-st.markdown("Witaj! Jestem asystentem, który potrafi opisać i otagować przesłane zdjęcia, a także odpowiedzieć na pytania dotyczące naszego FAQ lub przesłanego obrazu.")
+st.set_page_config(page_title="Asystent AI: Chatbot z FAQ i Zdjęciem", layout="centered")
+st.title("🤖 Asystent AI: Chatbot z FAQ i Zdjęciem")
+st.markdown("Witaj! Jestem chatbotem, który potrafi odpowiedzieć na pytania dotyczące naszego FAQ lub przesłanego obrazu, a także opisać i otagować zdjęcia. Możesz ze mną swobodnie rozmawiać!")
 
-# Zmienne stanu sesji do przechowywania opisu i tagów zdjęcia oraz ostatniej odpowiedzi
+# Inicjalizacja zmiennych stanu sesji
+if 'messages' not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Cześć! Jestem Twoim asystentem. Jak mogę pomóc?"}]
 if 'image_description' not in st.session_state:
     st.session_state['image_description'] = None
 if 'image_tags' not in st.session_state:
     st.session_state['image_tags'] = None
 if 'uploaded_image_bytes' not in st.session_state:
     st.session_state['uploaded_image_bytes'] = None
-if 'last_answer' not in st.session_state:
-    st.session_state['last_answer'] = "Zadaj pytanie, aby otrzymać odpowiedź."
+if 'uploaded_file_id' not in st.session_state: # Do sprawdzania, czy to nowy plik
+    st.session_state['uploaded_file_id'] = None
+if 'chat_session' not in st.session_state:
+    st.session_state['chat_session'] = None # Sesja czatu Gemini
+if 'context_updated_flag' not in st.session_state:
+    st.session_state['context_updated_flag'] = False # Flaga do sygnalizowania zmiany kontekstu
 
-
-# Sekcja opisywania zdjęć
-st.header("📸 Prześlij i Otaguj Zdjęcie")
-uploaded_file = st.file_uploader("Wybierz zdjęcie (JPG, PNG) do analizy:", type=["jpg", "jpeg", "png"])
+# Sekcja przesyłania zdjęć
+st.header("📸 Prześlij Zdjęcie do Analizy")
+uploaded_file = st.file_uploader("Wybierz zdjęcie (JPG, PNG):", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Tylko jeśli przesłano nowy plik, przetwarzaj go
-    if st.session_state.get('uploaded_file_id') != uploaded_file.file_id: # Sprawdź unikalne ID pliku
-        st.session_state['uploaded_file_id'] = uploaded_file.file_id # Zapisz ID nowego pliku
+    # Sprawdź, czy przesłany plik jest inny niż poprzedni
+    if st.session_state['uploaded_file_id'] != uploaded_file.file_id:
+        st.session_state['uploaded_file_id'] = uploaded_file.file_id
         st.session_state['uploaded_image_bytes'] = uploaded_file.getvalue()
         
         st.image(uploaded_file, caption='Przesłane zdjęcie', use_column_width=True)
@@ -170,24 +208,32 @@ if uploaded_file is not None:
             st.write(st.session_state['image_description'])
             st.subheader("Słowa kluczowe (tagi):")
             st.code(st.session_state['image_tags'])
-    else: # Jeśli plik już był przesłany w tej sesji, po prostu go wyświetl i jego analizę
+            
+            # Dodaj informację o zdjęciu do historii czatu
+            st.session_state.messages.append({"role": "assistant", "content": f"Przeanalizowałem to zdjęcie: {description}. Tag: {tags}. Teraz możesz zadawać mi pytania na jego temat."})
+            st.session_state['context_updated_flag'] = True # Ustaw flagę, że kontekst się zmienił
+            st.rerun() # Odśwież aplikację, aby zaktualizować sesję czatu
+    else: # Jeśli plik już był przesłany w tej sesji
         st.image(uploaded_file, caption='Przesłane zdjęcie', use_column_width=True)
         st.subheader("Opis zdjęcia:")
         st.write(st.session_state['image_description'])
         st.subheader("Słowa kluczowe (tagi):")
         st.code(st.session_state['image_tags'])
 
-# Sekcja zadawania pytań
-st.header("❓ Zadaj Pytanie")
-st.markdown("Zadaj pytanie dotyczące **FAQ** lub **przesłanego zdjęcia** (jeśli zostało przeanalizowane). Naciśnij **Enter**, aby wysłać.")
+# Wyświetlanie historii rozmowy
+st.header("💬 Rozmowa z Asystentem")
+# Użyj iteratora od końca, aby nowe wiadomości były na dole (jak w prawdziwym czacie)
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# Pole tekstowe pytania z callbackiem na Enter
+# Pole wprowadzania pytania na dole
 st.text_input(
-    "Wpisz swoje pytanie tutaj:", 
-    key="general_question_input", 
-    on_change=answer_question_callback # Ta funkcja zostanie wywołana po naciśnięciu Enter
+    "Wpisz swoje pytanie (naciśnij Enter):", 
+    key="chat_input", 
+    on_change=chat_with_bot, # Ta funkcja zostanie wywołana po naciśnięciu Enter
+    placeholder="Zapytaj o FAQ, zdjęcie lub cokolwiek..."
 )
 
-# Wyświetlanie ostatniej odpowiedzi
-st.subheader("Odpowiedź:")
-st.info(st.session_state['last_answer'])
+st.markdown("---")
+st.markdown("Stworzone z ❤️ i **Google Cloud Platform (Gemini AI)**")
