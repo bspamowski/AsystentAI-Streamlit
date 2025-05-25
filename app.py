@@ -43,8 +43,8 @@ def parse_faq_text(file_content):
             faq_entries.append({"pytanie": current_question, "odpowiedz": answer})
             current_question = None # Resetuj po dodaniu odpowiedzi
         else:
-            # Jeśli linia nie pasuje do formatu, spróbuj jako prosty tekst
-            # Traktujemy linie jako pary Pytanie/Odpowiedź oddzielone pustą linią
+            # Jeśli linia nie pasuje do formatu "Pytanie: / Odpowiedź:", 
+            # traktujemy linie jako pary Pytanie/Odpowiedź oddzielone pustą linią
             if current_question is None: # Jeśli to początek nowej pary (pytanie)
                 current_question = stripped_line
             else: # Jeśli to odpowiedź na poprzednie pytanie
@@ -54,7 +54,7 @@ def parse_faq_text(file_content):
     return faq_entries
 
 
-# --- Funkcje Asystenta (niezmienione, poza wykorzystaniem st.session_state['faq_data']) ---
+# --- Funkcje Asystenta ---
 
 def describe_and_tag_image(image_bytes):
     """
@@ -66,7 +66,7 @@ def describe_and_tag_image(image_bytes):
     }
     
     prompt_parts = [
-        "Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, osobach, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 5 do 10 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
+        "Opisz szczegółowo zawartość tego zdjęcia, koncentrując się na głównych obiektach, ilościach, osobach, akcjach, kolorach i ogólnym kontekście. Następnie, wygeneruj listę od 10 do 30 słów kluczowych (tagów) oddzielonych przecinkami, które najlepiej charakteryzują to zdjęcie. Format odpowiedzi: Opis: [Twój opis]. Tagi: [tag1, tag2, ...].",
         image_part
     ]
     
@@ -101,7 +101,6 @@ def describe_and_tag_image(image_bytes):
 def get_faq_context():
     """Generuje sformatowany kontekst FAQ z danych w st.session_state."""
     faq_context = ""
-    # Używamy danych FAQ z sesji
     if st.session_state['faq_data']: 
         faq_context += "Kontekst FAQ:\n"
         for entry in st.session_state['faq_data']:
@@ -138,8 +137,6 @@ def chat_with_bot():
         )
         
         # Inicjalizacja lub resetowanie sesji czatu
-        # Resetujemy sesję, jeśli kontekst (np. FAQ lub obraz) się zmienił,
-        # aby zapewnić modelowi pełny i aktualny kontekst na początku nowej "rozmowy".
         if 'chat_session' not in st.session_state or st.session_state.get('context_updated_flag', False):
             st.session_state.chat_session = model.start_chat(history=[
                 {"role": "user", "parts": [
@@ -165,8 +162,6 @@ def chat_with_bot():
         
         # Wyczyść pole wprowadzania po wysłaniu
         st.session_state.chat_input = ""
-        # Przeładowanie, aby wyświetlić najnowszą wiadomość na dole (może być agresywne w niektórych scenariuszach)
-        # st.rerun() # Usunęliśmy to, ponieważ display_chat_messages powinien radzić sobie z tym automatycznie
 
 def display_chat_messages():
     """Wyświetla wszystkie wiadomości z historii czatu."""
@@ -199,20 +194,38 @@ if 'context_updated_flag' not in st.session_state:
 if 'faq_data' not in st.session_state:
     # Początkowo ładujemy FAQ z pliku, jeśli istnieje, lub jest puste
     try:
-        with open("faq.json", "r", encoding="utf-8") as f:
-            st.session_state['faq_data'] = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+        # Próba wczytania domyślnego FAQ z pliku example_faq.txt
+        with open("example_faq.txt", "r", encoding="utf-8") as f:
+            st.session_state['faq_data'] = parse_faq_text(f.read().encode('utf-8'))
+    except (FileNotFoundError):
         st.session_state['faq_data'] = []
+    except Exception as e:
+        st.warning(f"Nie udało się załadować domyślnego FAQ z example_faq.txt: {e}")
+        st.session_state['faq_data'] = []
+
 
 # --- Sekcja Ładowania FAQ ---
 st.header("📚 Załaduj FAQ")
 st.markdown("Możesz załadować plik tekstowy z pytaniami i odpowiedziami FAQ. Każda para pytanie-odpowiedź powinna być oddzielona pustą linią. Pytania i odpowiedzi mogą być prefiksowane 'Pytanie:' i 'Odpowiedź:', ale nie jest to wymagane.")
+
+# Przycisk do pobierania przykładowego pliku FAQ
+try:
+    with open("example_faq.txt", "rb") as f:
+        st.download_button(
+            label="Pobierz przykładowe FAQ",
+            data=f.read(),
+            file_name="example_faq.txt",
+            mime="text/plain"
+        )
+except FileNotFoundError:
+    st.warning("Plik 'example_faq.txt' nie został znaleziony, nie można udostępnić przykładu.")
+
 uploaded_faq_file = st.file_uploader("Wybierz plik tekstowy (.txt) z FAQ:", type=["txt"], key="faq_uploader")
 
 if uploaded_faq_file is not None:
     # Sprawdź, czy to nowy plik FAQ, aby nie przetwarzać go na nowo przy każdej interakcji
-    if st.session_state.get('uploaded_faq_file_id') != uploaded_faq_file.file_id:
-        st.session_state['uploaded_faq_file_id'] = uploaded_faq_file.file_id
+    if st.session_state.get('uploaded_faq_file_id_faq') != uploaded_faq_file.file_id: # Zmieniono klucz id
+        st.session_state['uploaded_faq_file_id_faq'] = uploaded_faq_file.file_id
         
         with st.spinner("Ładuję i parsuję FAQ..."):
             faq_content = uploaded_faq_file.read()
@@ -235,13 +248,15 @@ if uploaded_faq_file is not None:
                 st.session_state['faq_data'] = [] # Wyczyść FAQ, jeśli błąd
                 st.session_state['context_updated_flag'] = True # Flaga, że kontekst się zmienił
 
+
 # --- Sekcja Przesyłania Zdjęć ---
 st.header("📸 Prześlij Zdjęcie do Analizy")
 uploaded_image_file = st.file_uploader("Wybierz zdjęcie (JPG, PNG):", type=["jpg", "jpeg", "png"], key="image_uploader")
 
 if uploaded_image_file is not None:
-    if st.session_state['uploaded_file_id'] != uploaded_image_file.file_id:
-        st.session_state['uploaded_file_id'] = uploaded_image_file.file_id
+    # Używamy unikalnego klucza dla ID pliku obrazu, aby nie kolidował z FAQ
+    if st.session_state.get('uploaded_image_file_id') != uploaded_image_file.file_id:
+        st.session_state['uploaded_image_file_id'] = uploaded_image_file.file_id
         st.session_state['uploaded_image_bytes'] = uploaded_image_file.getvalue()
         
         st.image(uploaded_image_file, caption='Przesłane zdjęcie', use_column_width=True)

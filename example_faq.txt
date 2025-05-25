@@ -1,0 +1,14 @@
+Pytanie: Jakie są godziny otwarcia biura?
+Odpowiedź: Nasze biuro jest otwarte od poniedziałku do piątku w godzinach 9:00 - 17:00 czasu lokalnego.
+
+Pytanie: Czy oferujecie wsparcie techniczne?
+Odpowiedź: Tak, oferujemy wsparcie techniczne za pośrednictwem poczty e-mail i telefonu. Szczegóły znajdziesz w sekcji kontakt.
+
+Pytanie: Jak mogę zresetować hasło?
+Odpowiedź: Aby zresetować hasło, przejdź do strony logowania i kliknij "Zapomniałem hasła", a następnie postępuj zgodnie z instrukcjami.
+
+Pytanie: Czy macie darmową dostawę?
+Odpowiedź: Darmowa dostawa jest dostępna dla wszystkich zamówień powyżej 150 PLN.
+
+Pytanie: Jak mogę skontaktować się z obsługą klienta?
+Odpowiedź: Możesz skontaktować się z nami telefonicznie pod numerem +48 123 456 789 lub mailowo pod adresem support@example.com.
